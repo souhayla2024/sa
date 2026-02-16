@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>💍 Une question importante...</title>
+  <title>💍 Défi d'amour</title>
   <style>
     * {
       box-sizing: border-box;
@@ -52,6 +52,24 @@
       display: block;
     }
 
+    /* Timer */
+    .timer-container {
+      width: 100%;
+      height: 10px;
+      background: #ddd;
+      border-radius: 5px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    .timer-bar {
+      height: 100%;
+      width: 100%;
+      background: #d52f2b;
+      border-radius: 5px;
+      transition: width 0.1s linear;
+    }
+
+    /* Boutons */
     .buttons {
       margin-top: 20px;
       display: flex;
@@ -59,7 +77,7 @@
       gap: 15px;
       flex-wrap: wrap;
       position: relative;
-      min-height: 70px;
+      min-height: 200px; /* plus grand pour accueillir plusieurs boutons */
     }
 
     button {
@@ -73,28 +91,30 @@
       box-shadow: 0 5px 10px rgba(0,0,0,0.1);
     }
 
-    #yesBtn { background: #28a745; color: white; }
-    #yesBtn:hover { transform: scale(1.08); background: #1e7e34; }
+    .btn-yes {
+      background: #28a745;
+      color: white;
+    }
+    .btn-yes:hover { transform: scale(1.08); background: #1e7e34; }
 
-    #noBtn {
+    .btn-no {
       background: #dc3545;
       color: white;
-      transition: left 0.1s ease, top 0.1s ease;
     }
+    .btn-no:hover { background: #b02a37; }
 
-    /* Position normale */
-    #noBtn.normal-mode {
-      position: relative;
-      left: auto !important;
-      top: auto !important;
-    }
-
-    /* Position absolue pour la fuite */
-    #noBtn.flee-mode {
+    /* Boutons en position absolue pour la fuite */
+    .btn-absolute {
       position: absolute;
     }
 
-    #noBtn:hover:not(.flee-mode) { background: #b02a37; }
+    /* Bouton final géant */
+    .btn-giant {
+      transform: scale(1.5);
+      margin: 20px auto;
+      padding: 20px 40px;
+      font-size: 1.5rem;
+    }
 
     .secret-box {
       display: none;
@@ -177,6 +197,20 @@
       text-decoration: underline;
     }
 
+    /* Contrôle musique */
+    .music-control {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: white;
+      border-radius: 30px;
+      padding: 8px 15px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 100;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
     /* Confettis */
     @keyframes fall {
       0% { transform: translateY(0); }
@@ -187,6 +221,7 @@
       h1 { font-size: 1.5rem; }
       p, .secret-box p { font-size: 0.9rem; }
       button { font-size: 0.9rem; padding: 10px 18px; }
+      .btn-giant { transform: scale(1.2); padding: 15px 30px; }
       .image-box { max-height: 40vh; }
       .modal-emoji { font-size: 4rem; }
       .modal-message { font-size: 1.2rem; }
@@ -200,6 +235,9 @@
   <div class="heart" style="top: 70%; left: 10%;">💖</div>
   <div class="heart" style="top: 80%; left: 85%;">💕</div>
 
+  <!-- Contrôle musique -->
+  <div class="music-control" id="musicToggle">🔇 Activer musique</div>
+
   <div class="container">
     <h1>Mon amour... 💕</h1>
     <p>J’ai quelques questions pour toi 😳</p>
@@ -208,12 +246,14 @@
       <img src="image1.jpeg" alt="Souhayla & Ahmed" />
     </div>
 
+    <!-- Timer -->
+    <div class="timer-container">
+      <div class="timer-bar" id="timerBar"></div>
+    </div>
+
     <div id="questionBox">
       <p id="questionText" style="font-weight:600;"></p>
-      <div class="buttons">
-        <button id="yesBtn">Oui 😍</button>
-        <button id="noBtn">Non 🙄</button>
-      </div>
+      <div class="buttons" id="buttonsContainer"></div>
     </div>
 
     <div class="secret-box" id="secretBox">
@@ -235,154 +275,350 @@
     </div>
   </div>
 
+  <!-- Audio (remplacez les sources par vos fichiers) -->
+  <audio id="bgMusic" loop>
+    <source src="musique_fond.mp3" type="audio/mpeg">
+  </audio>
+  <audio id="victoryMusic">
+    <source src="victoire.mp3" type="audio/mpeg">
+  </audio>
+
   <script>
     (function() {
+      // ---------- Configuration ----------
       const questions = [
         "T7ebbni ? 😘",
         "Bech tdallani ? 💕",
         "Mouch bech t5allini wa7di ? 💖",
         "Me tor9odech w t5allini nasher wa7di ? 😭",
-        "Veux-tu m'épouser ? 💍"
+        "Veux-tu m'épouser ? 💍"   // dernière question
       ];
       const LAST_INDEX = questions.length - 1;
+      const TIME_PER_QUESTION = 10; // secondes
+      const FAKE_YES_THRESHOLD = 3;  // nombre de clics sur faux Oui avant d'afficher le gros bouton
 
+      // ---------- Éléments DOM ----------
       const questionText = document.getElementById('questionText');
-      const yesBtn = document.getElementById('yesBtn');
-      const noBtn = document.getElementById('noBtn');
       const secretBox = document.getElementById('secretBox');
       const questionBox = document.getElementById('questionBox');
       const mainImage = document.getElementById('mainImage');
+      const buttonsContainer = document.getElementById('buttonsContainer');
+      const timerBar = document.getElementById('timerBar');
       const modal = document.getElementById('customModal');
       const modalEmoji = document.getElementById('modalEmoji');
       const modalMessage = document.getElementById('modalMessage');
+      const musicToggle = document.getElementById('musicToggle');
+      const bgMusic = document.getElementById('bgMusic');
+      const victoryMusic = document.getElementById('victoryMusic');
 
+      // ---------- Variables d'état ----------
       let currentQuestion = 0;
-      let fleeClickCount = 0;
-      const FLEE_THRESHOLD = 5;
-      let isFleeModeActive = false;
+      let fleeClickCount = 0;          // clics sur le vrai bouton Non (dernière question)
+      const FLEE_THRESHOLD = 5;        // après 5 clics, on passe aux Oui multiples
+      let fakeYesClickCount = 0;        // clics sur les faux Oui
+      let timerInterval = null;
+      let timeLeft = TIME_PER_QUESTION;
+      let musicEnabled = false;
 
+      // Références aux boutons dynamiques
+      let realNoButton = null;          // le vrai bouton Non (celui qui rétrécit)
+      let fakeNoButtons = [];            // les faux boutons Non
+      let realYesButton = null;          // le vrai bouton Oui final
+      let fakeYesButtons = [];            // les faux boutons Oui finaux
+
+      // ---------- Initialisation ----------
       questionText.innerText = questions[currentQuestion];
-      setNormalMode();
+      renderNormalButtons();  // affiche les boutons Oui/Non normaux
 
-      // Fonction pour afficher le modal
+      // ---------- Fonctions timer ----------
+      function startTimer() {
+        stopTimer();
+        timeLeft = TIME_PER_QUESTION;
+        timerBar.style.width = '100%';
+        timerInterval = setInterval(() => {
+          timeLeft -= 0.1;
+          const percent = (timeLeft / TIME_PER_QUESTION) * 100;
+          timerBar.style.width = Math.max(0, percent) + '%';
+          if (timeLeft <= 0) {
+            handleTimeout();
+          }
+        }, 100);
+      }
+
+      function stopTimer() {
+        if (timerInterval) clearInterval(timerInterval);
+      }
+
+      function handleTimeout() {
+        stopTimer();
+        showModal('⏰😠', 'Trop tard ! Réessaie vite 😘');
+        startTimer(); // on redémarre le timer (pénalité : perte de temps)
+      }
+
+      // ---------- Modal ----------
       function showModal(emoji, message, duration = 1500) {
         modalEmoji.innerText = emoji;
         modalMessage.innerText = message;
         modal.style.display = 'flex';
-        // Fermeture automatique après duration ms
         setTimeout(closeModal, duration);
       }
+      window.closeModal = function() { modal.style.display = 'none'; };
+      modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
 
-      // Fonction pour fermer le modal
-      window.closeModal = function() {
-        modal.style.display = 'none';
-      };
-
-      // Fermer le modal en cliquant sur l'overlay
-      modal.addEventListener('click', function(e) {
-        if (e.target === modal) closeModal();
+      // ---------- Musique ----------
+      musicToggle.addEventListener('click', () => {
+        if (musicEnabled) {
+          bgMusic.pause();
+          musicToggle.innerText = '🔇 Activer musique';
+        } else {
+          bgMusic.play().catch(e => console.log('Autoplay bloqué'));
+          musicToggle.innerText = '🔊 Musique active';
+        }
+        musicEnabled = !musicEnabled;
       });
 
-      function setNormalMode() {
-        isFleeModeActive = false;
-        yesBtn.style.display = 'inline-block';
-        noBtn.style.display = 'inline-block';
-        noBtn.classList.remove('flee-mode');
-        noBtn.classList.add('normal-mode');
-        noBtn.style.left = '';
-        noBtn.style.top = '';
+      // ---------- Rendu des boutons pour questions normales ----------
+      function renderNormalButtons() {
+        buttonsContainer.innerHTML = ''; // nettoie
+        // Crée le bouton Oui
+        const yesBtn = document.createElement('button');
+        yesBtn.id = 'yesBtn'; // pour compatibilité avec les événements
+        yesBtn.className = 'btn-yes';
+        yesBtn.innerText = 'Oui 😍';
+        yesBtn.addEventListener('click', onYesClick);
+        buttonsContainer.appendChild(yesBtn);
+
+        // Crée le bouton Non (normal, non fuyant)
+        const noBtn = document.createElement('button');
+        noBtn.id = 'noBtn';
+        noBtn.className = 'btn-no normal-mode';
         noBtn.innerText = 'Non 🙄';
+        noBtn.addEventListener('click', onNoClickNormal);
+        buttonsContainer.appendChild(noBtn);
+
+        // Démarrer le timer
+        startTimer();
       }
 
-      function setFleeModeForLastQuestion() {
-        isFleeModeActive = true;
-        fleeClickCount = 0;
-        yesBtn.style.display = 'none';
-        noBtn.style.display = 'inline-block';
-        noBtn.classList.remove('normal-mode');
-        noBtn.classList.add('flee-mode');
-        noBtn.innerText = 'Non 🙄';
-        positionNoButtonRandomly();
-      }
-
-      function applyQuestionMode() {
+      // ---------- Gestionnaires pour questions normales ----------
+      function onYesClick() {
         if (currentQuestion < LAST_INDEX) {
-          setNormalMode();
-        } else {
-          setFleeModeForLastQuestion();
-        }
-      }
-
-      function positionNoButtonRandomly() {
-        if (!isFleeModeActive) return;
-        const container = document.querySelector('.container');
-        const containerRect = container.getBoundingClientRect();
-        const btnRect = noBtn.getBoundingClientRect();
-
-        const MARGIN = 15;
-        let maxX = containerRect.width - btnRect.width - MARGIN;
-        let maxY = containerRect.height - btnRect.height - MARGIN;
-        let minX = MARGIN;
-        let minY = MARGIN;
-
-        if (maxX < minX) {
-          minX = 5;
-          maxX = containerRect.width - btnRect.width - 5;
-        }
-        if (maxY < minY) {
-          minY = 5;
-          maxY = containerRect.height - btnRect.height - 5;
-        }
-        if (maxX <= 0 || maxY <= 0) return;
-
-        const randomX = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
-        const randomY = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
-
-        noBtn.style.left = randomX + 'px';
-        noBtn.style.top = randomY + 'px';
-      }
-
-      yesBtn.addEventListener('click', function() {
-        if (currentQuestion === LAST_INDEX && yesBtn.style.display === 'none') return;
-
-        if (currentQuestion < LAST_INDEX) {
+          // Passer à la question suivante
           currentQuestion++;
           questionText.innerText = questions[currentQuestion];
-          applyQuestionMode();
-        } else if (currentQuestion === LAST_INDEX) {
-          triggerFinal();
-        }
-      });
-
-      noBtn.addEventListener('click', function(e) {
-        e.preventDefault();
-
-        if (currentQuestion < LAST_INDEX) {
-          // Afficher le modal au lieu de l'alert et de l'emoji géant
-          showModal('😠😘', 'Tu dois cocher Oui !');
-        } else if (currentQuestion === LAST_INDEX) {
-          if (isFleeModeActive) {
-            fleeClickCount++;
-            if (fleeClickCount < FLEE_THRESHOLD) {
-              positionNoButtonRandomly();
-            } else {
-              yesBtn.style.display = 'inline-block';
-              isFleeModeActive = false;
-              noBtn.classList.remove('flee-mode');
-              noBtn.classList.add('normal-mode');
-              noBtn.style.left = '';
-              noBtn.style.top = '';
-              noBtn.innerText = 'Bon d\'accord 😅';
-            }
+          stopTimer();
+          if (currentQuestion === LAST_INDEX) {
+            renderLastQuestion(); // affiche la dernière question avec multiples Non
+          } else {
+            renderNormalButtons();
           }
         }
-      });
+      }
 
+      function onNoClickNormal(e) {
+        e.preventDefault();
+        showModal('😠😘', 'Tu dois cocher Oui !');
+        // Pas de changement de question, le timer continue
+      }
+
+      // ---------- Rendu de la dernière question (avec multiples Non) ----------
+      function renderLastQuestion() {
+        buttonsContainer.innerHTML = '';
+        stopTimer();
+        startTimer(); // redémarre le timer pour cette question
+
+        // Créer le vrai bouton Non (celui qui rétrécit)
+        realNoButton = document.createElement('button');
+        realNoButton.className = 'btn-no btn-absolute';
+        realNoButton.innerText = 'Non 🙄';
+        realNoButton.dataset.role = 'real';
+        realNoButton.style.transform = 'scale(1)';
+        realNoButton.addEventListener('click', onRealNoClick);
+        buttonsContainer.appendChild(realNoButton);
+
+        // Créer deux faux boutons Non
+        fakeNoButtons = [];
+        for (let i = 0; i < 2; i++) {
+          const fake = document.createElement('button');
+          fake.className = 'btn-no btn-absolute';
+          fake.innerText = 'Non 🙄';
+          fake.dataset.role = 'fake';
+          fake.addEventListener('click', onFakeNoClick);
+          buttonsContainer.appendChild(fake);
+          fakeNoButtons.push(fake);
+        }
+
+        // Positionner aléatoirement tous les boutons Non
+        positionAllNoButtons();
+      }
+
+      function positionAllNoButtons() {
+        const containerRect = buttonsContainer.getBoundingClientRect();
+        const margin = 15;
+        const buttons = [realNoButton, ...fakeNoButtons].filter(b => b !== null);
+        buttons.forEach(btn => {
+          if (!btn) return;
+          const btnRect = btn.getBoundingClientRect();
+          let maxX = containerRect.width - btnRect.width - margin;
+          let maxY = containerRect.height - btnRect.height - margin;
+          let minX = margin;
+          let minY = margin;
+          if (maxX < minX) { minX = 5; maxX = containerRect.width - btnRect.width - 5; }
+          if (maxY < minY) { minY = 5; maxY = containerRect.height - btnRect.height - 5; }
+          if (maxX <= 0 || maxY <= 0) return;
+          const x = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
+          const y = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+          btn.style.left = x + 'px';
+          btn.style.top = y + 'px';
+        });
+      }
+
+      function onRealNoClick(e) {
+        e.preventDefault();
+        // Incrémente le compteur et rétrécit
+        fleeClickCount++;
+        const scale = 1 - (fleeClickCount * 0.1); // 0.9, 0.8, ...
+        realNoButton.style.transform = `scale(${Math.max(0.5, scale)})`;
+
+        if (fleeClickCount >= FLEE_THRESHOLD) {
+          // Fin de la phase Non, on passe aux Oui multiples
+          renderFinalYesButtons();
+        } else {
+          // Déplace tous les boutons (fuite générale)
+          positionAllNoButtons();
+        }
+      }
+
+      function onFakeNoClick(e) {
+        e.preventDefault();
+        showModal('😵', 'Mauvais bouton ! 3le 5atri zid 7awel lin tel9a el Oui');
+        // Déplace seulement ce faux bouton
+        const fake = e.currentTarget;
+        const containerRect = buttonsContainer.getBoundingClientRect();
+        const btnRect = fake.getBoundingClientRect();
+        const margin = 15;
+        let maxX = containerRect.width - btnRect.width - margin;
+        let maxY = containerRect.height - btnRect.height - margin;
+        let minX = margin;
+        let minY = margin;
+        if (maxX < minX) { minX = 5; maxX = containerRect.width - btnRect.width - 5; }
+        if (maxY < minY) { minY = 5; maxY = containerRect.height - btnRect.height - 5; }
+        if (maxX <= 0 || maxY <= 0) return;
+        const x = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
+        const y = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+        fake.style.left = x + 'px';
+        fake.style.top = y + 'px';
+      }
+
+      // ---------- Rendu des boutons Oui multiples (final) ----------
+      function renderFinalYesButtons() {
+        buttonsContainer.innerHTML = '';
+        stopTimer();
+        // Cacher le timer (plus besoin)
+        document.querySelector('.timer-container').style.display = 'none';
+        fakeYesClickCount = 0; // réinitialiser le compteur
+
+        // Créer le vrai bouton Oui (en relatif pour qu'il soit plus facile)
+        realYesButton = document.createElement('button');
+        realYesButton.className = 'btn-yes';
+        realYesButton.innerText = 'Oui 😍';
+        realYesButton.dataset.role = 'real';
+        realYesButton.style.position = 'relative';
+        realYesButton.style.left = 'auto';
+        realYesButton.style.top = 'auto';
+        realYesButton.style.margin = '0 auto';
+        realYesButton.addEventListener('click', triggerFinal);
+        buttonsContainer.appendChild(realYesButton);
+
+        // Créer deux faux boutons Oui (en absolu)
+        fakeYesButtons = [];
+        for (let i = 0; i < 2; i++) {
+          const fake = document.createElement('button');
+          fake.className = 'btn-yes btn-absolute';
+          fake.innerText = 'Oui 😍';
+          fake.dataset.role = 'fake';
+          fake.addEventListener('click', onFakeYesClick);
+          buttonsContainer.appendChild(fake);
+          fakeYesButtons.push(fake);
+        }
+
+        // Positionner les faux aléatoirement
+        positionFakeYesButtons();
+      }
+
+      function positionFakeYesButtons() {
+        const containerRect = buttonsContainer.getBoundingClientRect();
+        const margin = 15;
+        fakeYesButtons.forEach(fake => {
+          if (!fake) return;
+          const btnRect = fake.getBoundingClientRect();
+          let maxX = containerRect.width - btnRect.width - margin;
+          let maxY = containerRect.height - btnRect.height - margin;
+          let minX = margin;
+          let minY = margin;
+          if (maxX < minX) { minX = 5; maxX = containerRect.width - btnRect.width - 5; }
+          if (maxY < minY) { minY = 5; maxY = containerRect.height - btnRect.height - 5; }
+          if (maxX <= 0 || maxY <= 0) return;
+          const x = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
+          const y = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+          fake.style.left = x + 'px';
+          fake.style.top = y + 'px';
+        });
+      }
+
+      function onFakeYesClick(e) {
+        e.preventDefault();
+        fakeYesClickCount++;
+        // Afficher le message "7awel marra o5ra"
+        showModal('🤔', '7awel marra o5ra', 1200);
+        // Le faux Oui fuit
+        const fake = e.currentTarget;
+        const containerRect = buttonsContainer.getBoundingClientRect();
+        const btnRect = fake.getBoundingClientRect();
+        const margin = 15;
+        let maxX = containerRect.width - btnRect.width - margin;
+        let maxY = containerRect.height - btnRect.height - margin;
+        let minX = margin;
+        let minY = margin;
+        if (maxX < minX) { minX = 5; maxX = containerRect.width - btnRect.width - 5; }
+        if (maxY < minY) { minY = 5; maxY = containerRect.height - btnRect.height - 5; }
+        if (maxX <= 0 || maxY <= 0) return;
+        const x = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
+        const y = Math.floor(Math.random() * (maxY - minY + 1)) + minY;
+        fake.style.left = x + 'px';
+        fake.style.top = y + 'px';
+
+        // Si on a atteint le seuil de clics sur faux, on affiche le gros bouton unique
+        if (fakeYesClickCount >= FAKE_YES_THRESHOLD) {
+          renderFinalSingleYesButton();
+        }
+      }
+
+      // ---------- Rendu du bouton Oui unique et géant ----------
+      function renderFinalSingleYesButton() {
+        buttonsContainer.innerHTML = '';
+        const giantYes = document.createElement('button');
+        giantYes.className = 'btn-yes btn-giant';
+        giantYes.innerText = 'OUI 💍';
+        giantYes.style.margin = '20px auto';
+        giantYes.style.display = 'block';
+        giantYes.addEventListener('click', triggerFinal);
+        buttonsContainer.appendChild(giantYes);
+      }
+
+      // ---------- Déclenchement final (victoire) ----------
       function triggerFinal() {
+        // Jouer musique de victoire
+        if (musicEnabled) {
+          bgMusic.pause();
+          victoryMusic.play().catch(e => console.log('Victoire bloquée'));
+        }
+        // Cacher la boîte de questions
         questionBox.style.display = 'none';
         secretBox.style.display = 'block';
         mainImage.innerHTML = '<img src="robe_blanc.jpeg" alt="Notre mariage" />';
 
+        // Confettis
         for (let i = 0; i < 30; i++) {
           let emoji = document.createElement('div');
           const randomEmoji = ['💖', '💍', '🎉', '💕', '😘', '💒'][Math.floor(Math.random() * 6)];
@@ -397,22 +633,26 @@
           document.body.appendChild(emoji);
           setTimeout(() => emoji.remove(), 3000);
         }
-        document.querySelector('h1').innerText = '💍 Félicitations ma future femme ! 💍';
+        document.querySelector('h1').innerText = '💍 Félicitations mon futur Mari ! 💍';
       }
 
-      // Animation de chute
+      // ---------- Gestion redimensionnement pour garder les boutons dans le champ ----------
+      window.addEventListener('resize', () => {
+        if (currentQuestion === LAST_INDEX && realNoButton && fakeNoButtons.length) {
+          positionAllNoButtons();
+        } else if (fakeYesButtons.length) {
+          positionFakeYesButtons();
+        }
+      });
+
+      // ---------- Initialisation supplémentaire ----------
+      // Animation de chute si non présente
       if (!document.querySelector('#fallKeyframes')) {
         const style = document.createElement('style');
         style.id = 'fallKeyframes';
         style.innerHTML = `@keyframes fall { 0% { transform: translateY(0); } 100% { transform: translateY(110vh); } }`;
         document.head.appendChild(style);
       }
-
-      window.addEventListener('resize', function() {
-        if (isFleeModeActive && noBtn.style.display !== 'none') {
-          positionNoButtonRandomly();
-        }
-      });
     })();
   </script>
 </body>
